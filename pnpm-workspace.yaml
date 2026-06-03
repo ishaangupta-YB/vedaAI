@@ -1,0 +1,20 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Native deps allowed to run install/build scripts (pnpm blocks these by default).
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - msgpackr-extract
+  - "@tailwindcss/oxide"
+  # Rust-based module resolver used by eslint-import-resolver-typescript
+  # (pulled in transitively by eslint-config-next). Its postinstall just links
+  # the prebuilt native binary; without it pnpm leaves a pending-build state
+  # that makes `pnpm <script>` fail its pre-run dependency check.
+  - unrs-resolver
+
+# Dedupe ioredis to a single version so the Redis instance from @veda-ai/db is
+# assignable to BullMQ's connection type (bullmq otherwise pulls its own copy).
+overrides:
+  ioredis: "^5.11.0"

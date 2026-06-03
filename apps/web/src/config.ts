@@ -1,0 +1,18 @@
+import { z } from "zod";
+
+/**
+ * Typed config for the web app. This is the ONLY place `process.env` is read.
+ * Only `NEXT_PUBLIC_*` vars are exposed to the browser, and they must be
+ * referenced statically (as below) so Next can inline them at build time.
+ */
+const envSchema = z.object({
+  NEXT_PUBLIC_API_URL: z.string().url().default("http://localhost:4000"),
+  NEXT_PUBLIC_WS_URL: z.string().url().default("http://localhost:4000"),
+});
+
+export type WebConfig = z.infer<typeof envSchema>;
+
+export const config: WebConfig = envSchema.parse({
+  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
+});
