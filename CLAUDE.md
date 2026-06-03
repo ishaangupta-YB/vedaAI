@@ -226,3 +226,8 @@ structured-output layer, not prose.
 ## Contract change log
 
 - (init) Baseline contract established in Phase 0.
+- (worker) Added an optional `pdf` Buffer field to the `QuestionPaper` Mongoose
+  model (`packages/db`). The worker's `render-pdf` job stores the rendered
+  exam-paper PDF bytes there so the API can stream them from
+  `GET /api/papers/:id/pdf`. It is server-side storage only and is NOT part of
+  the JSON `QuestionPaper` Zod contract (binary blob, served via a dedicated route).
