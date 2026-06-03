@@ -1,23 +1,62 @@
-import express, { type Express, type Request, type Response } from "express";
-import { API_ROUTES } from "@veda-ai/shared";
+import { createServer as createHttpServer } from "node:http";
+import { connectMongo } from "@veda-ai/db";
 import { config } from "./config.js";
+import { createApp } from "./app.js";
+import { createAssessmentQueue } from "./queue.js";
+import { createSocketServer, startPubSubBridge } from "./socket.js";
+import { logger } from "./lib/logger.js";
 
 /**
- * Build the Express app. Only the health endpoint exists in this phase; routes,
- * Socket.IO, and the worker bridge arrive later.
+ * API process entrypoint: connect Mongo, build the BullMQ producer queue and
+ * the Express app, attach Socket.IO + the Redis pub/sub bridge to a single HTTP
+ * server, then listen. Shuts everything down cleanly on SIGINT/SIGTERM.
  */
-export function createServer(): Express {
-  const app = express();
-  app.use(express.json());
+async function main(): Promise<void> {
+  await connectMongo(config.MONGODB_URI);
+  logger.info("mongo connected");
 
-  app.get(API_ROUTES.HEALTH, (_req: Request, res: Response) => {
-    res.json({ ok: true });
+  const queue = createAssessmentQueue(config.REDIS_URL);
+  const app = createApp({ queue });
+  const httpServer = createHttpServer(app);
+
+  const io = createSocketServer(httpServer, config.CLIENT_ORIGIN);
+  const subscriber = startPubSubBridge(io, config.REDIS_URL);
+
+  httpServer.listen(config.PORT, () => {
+    logger.info("api listening", {
+      port: config.PORT,
+      url: `http://localhost:${config.PORT}`,
+    });
   });
 
-  return app;
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    logger.info("shutting down", { signal });
+    try {
+      await io.close();
+      subscriber.disconnect();
+      await queue.close();
+      httpServer.close();
+    } catch (err) {
+      logger.error("error during shutdown", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      process.exit(0);
+    }
+  };
+
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-const app = createServer();
-app.listen(config.PORT, () => {
-  console.log(`[api] listening on http://localhost:${config.PORT}`);
+main().catch((err: unknown) => {
+  logger.error("failed to start api", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+  process.exit(1);
 });
