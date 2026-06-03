@@ -45,6 +45,10 @@ const questionPaperSchema = new Schema(
     totalMarks: { type: Number, required: true },
     sections: { type: [sectionSchema], required: true },
     generatedAt: { type: String, required: true },
+    // Rendered exam-paper PDF bytes, written by the worker's `render-pdf` job so
+    // the API can stream them from GET /api/papers/:id/pdf. Not part of the
+    // JSON `QuestionPaper` contract (binary blob, served via a dedicated route).
+    pdf: { type: Buffer },
   },
   { timestamps: true },
 );
