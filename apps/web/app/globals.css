@@ -1,1 +1,131 @@
 @import "tailwindcss";
+
+/*
+ * VedaAI design tokens. Tailwind v4 reads `@theme` and generates the matching
+ * utilities (e.g. `bg-brand-500`, `text-ink`, `rounded-card`). Keep all visual
+ * primitives here so components stay declarative.
+ */
+@theme {
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+
+  /* Brand — warm coral/orange pulled from the logo, badges and accent glows. */
+  --color-brand-50: #fff4ef;
+  --color-brand-100: #ffe6da;
+  --color-brand-200: #ffcbb4;
+  --color-brand-300: #ffa985;
+  --color-brand-400: #fb7e50;
+  --color-brand-500: #f1592a;
+  --color-brand-600: #db4717;
+  --color-brand-700: #b5380f;
+
+  /* Near-black ink used for body copy and the signature pill buttons. */
+  --color-ink: #1c1c1e;
+  --color-ink-soft: #3a3a3e;
+
+  /* Neutral surface ramp tuned to the warm-gray Figma canvas. */
+  --color-canvas: #e9e9eb;
+  --color-canvas-edge: #e1e1e4;
+  --color-muted: #6c6c72;
+  --color-faint: #9a9aa1;
+  --color-hairline: #ededf0;
+
+  /* Difficulty palette — three visually distinct, accessible hues. */
+  --color-easy-bg: #e9f8ef;
+  --color-easy-fg: #157a3a;
+  --color-easy-ring: #bce8cd;
+  --color-moderate-bg: #fff2df;
+  --color-moderate-fg: #b45309;
+  --color-moderate-ring: #fbd8a4;
+  --color-hard-bg: #fce9e9;
+  --color-hard-fg: #bb1c1c;
+  --color-hard-ring: #f3c2c2;
+
+  --color-status: #2bb673;
+
+  --radius-card: 1.5rem;
+  --radius-panel: 2rem;
+
+  --shadow-soft: 0 1px 2px rgba(17, 17, 20, 0.04),
+    0 12px 32px -12px rgba(17, 17, 20, 0.12);
+  --shadow-float: 0 10px 30px -8px rgba(17, 17, 20, 0.18);
+  --shadow-pill: 0 8px 20px -6px rgba(17, 17, 20, 0.45);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background:
+      radial-gradient(120% 80% at 50% -10%, #f1f1f3 0%, transparent 55%),
+      linear-gradient(180deg, var(--color-canvas) 0%, var(--color-canvas-edge) 100%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--color-brand-200);
+    color: var(--color-ink);
+  }
+
+  /* Strip native number-input spinners — steppers handle increment/decrement. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Underline used by the printable student-info fill-in lines. */
+  .answer-line {
+    border-bottom: 1.5px solid var(--color-ink);
+  }
+}
+
+@keyframes progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+
+/*
+ * Print stylesheet: when a teacher prints (or "Save as PDF" from the browser),
+ * collapse all app chrome and show only the exam paper, edge to edge.
+ */
+@media print {
+  body {
+    background: #fff;
+  }
+  [data-print="hide"] {
+    display: none !important;
+  }
+  [data-print="paper"] {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+}
