@@ -2,6 +2,12 @@ packages:
   - "apps/*"
   - "packages/*"
 
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
+  unrs-resolver: true
+
 # Native deps allowed to run install/build scripts (pnpm blocks these by default).
 onlyBuiltDependencies:
   - esbuild
