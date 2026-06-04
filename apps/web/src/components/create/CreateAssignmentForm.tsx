@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -44,6 +44,14 @@ export function CreateAssignmentForm(): React.ReactNode {
   const router = useRouter();
   const beginRun = useGenerationStore((s) => s.beginRun);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  // Move focus to the error summary when a server-side submit error appears, so
+  // keyboard and screen-reader users are taken straight to it (field-level
+  // validation errors are handled by react-hook-form's focus-on-error).
+  useEffect(() => {
+    if (submitError) errorRef.current?.focus();
+  }, [submitError]);
 
   const {
     register,
@@ -121,6 +129,7 @@ export function CreateAssignmentForm(): React.ReactNode {
               <div className="relative mt-2">
                 <input
                   id="dueDate"
+                  ref={field.ref}
                   type="datetime-local"
                   aria-label="Due date"
                   value={isoToLocalInput(field.value)}
@@ -187,6 +196,7 @@ export function CreateAssignmentForm(): React.ReactNode {
                               value={f.value}
                               onChange={f.onChange}
                               onBlur={f.onBlur}
+                              inputRef={f.ref}
                               min={1}
                               max={50}
                               ariaLabel={`Number of questions for type ${index + 1}`}
@@ -206,6 +216,7 @@ export function CreateAssignmentForm(): React.ReactNode {
                               value={f.value}
                               onChange={f.onChange}
                               onBlur={f.onBlur}
+                              inputRef={f.ref}
                               min={1}
                               max={100}
                               ariaLabel={`Marks per question for type ${index + 1}`}
@@ -288,24 +299,27 @@ export function CreateAssignmentForm(): React.ReactNode {
 
       {submitError ? (
         <div
+          ref={errorRef}
           role="alert"
-          className="flex items-start gap-3 rounded-2xl bg-hard-bg px-4 py-3 text-sm text-hard-fg ring-1 ring-hard-ring"
+          tabIndex={-1}
+          className="flex items-start gap-3 rounded-2xl bg-hard-bg px-4 py-3 text-sm text-hard-fg outline-none ring-1 ring-hard-ring focus-visible:ring-2 focus-visible:ring-hard-fg"
         >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>{submitError}</span>
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button
           type="button"
           variant="secondary"
           onClick={() => router.push("/")}
           disabled={isSubmitting}
+          className="w-full sm:w-auto"
         >
           Cancel
         </Button>
-        <Button type="submit" size="lg" disabled={isSubmitting}>
+        <Button type="submit" size="lg" disabled={isSubmitting} className="w-full sm:w-auto">
           <Sparkles className="size-[1.15rem]" />
           {isSubmitting ? "Generating…" : "Generate Question Paper"}
         </Button>

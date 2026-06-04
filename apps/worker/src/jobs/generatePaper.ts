@@ -46,6 +46,15 @@ export async function handleGeneratePaper(
   let content: QuestionPaperContent;
   const cacheHit = cachedRaw !== null;
 
+  // Observable, deliberate caching: one line per generation states whether the
+  // identical-input paper was reused (HIT, no LLM call) or freshly generated
+  // (MISS). See README "Paper caching".
+  console.log(
+    `[worker] generate-paper ${assignmentId} — paper cache ${
+      cacheHit ? "HIT (reusing, no LLM call)" : "MISS (calling LLM)"
+    } key=${cacheKey}`,
+  );
+
   if (cachedRaw !== null) {
     content = QuestionPaperContent.parse(JSON.parse(cachedRaw));
   } else {
@@ -57,7 +66,7 @@ export async function handleGeneratePaper(
     });
     if (!ctx.generate) {
       throw new Error(
-        "ANTHROPIC_API_KEY is not configured; cannot generate a paper",
+        "Bedrock is not configured (set AWS_BEARER_TOKEN_BEDROCK); cannot generate a paper",
       );
     }
     // d. Call the model with structured outputs.

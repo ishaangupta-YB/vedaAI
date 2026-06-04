@@ -5,7 +5,8 @@ import type { CreateAssignmentInput, QuestionType } from "@veda-ai/shared";
  * step (CLAUDE.md "Prompt construction"). Given the same `CreateAssignmentInput`
  * these builders always produce byte-identical prompts, which is what the
  * snapshot test pins. Schema enforcement is intentionally NOT described here;
- * that belongs to the structured-output layer (`output_config.format`).
+ * that belongs to the structured-output layer (Bedrock Converse
+ * `outputConfig.textFormat`).
  */
 
 /** Human-readable section heading for each question type. */

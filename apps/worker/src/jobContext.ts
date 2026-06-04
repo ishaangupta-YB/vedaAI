@@ -15,7 +15,7 @@ export interface JobContext {
   publisher: Publisher;
   /** The `assessment` queue, used to enqueue follow-up jobs (e.g. render-pdf). */
   queue: Queue;
-  /** Model caller, or `null` when `ANTHROPIC_API_KEY` is not configured. */
+  /** Model caller, or `null` when Bedrock credentials are not configured. */
   generate: GenerateFn | null;
   /** TTL (seconds) applied to cached papers. */
   cacheTtlSeconds: number;

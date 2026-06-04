@@ -1,4 +1,15 @@
+import { config as loadDotenv } from "dotenv";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+// Load the monorepo-root `.env` so a single file configures api + worker for
+// local dev. Real environment variables (shell / CI) always take precedence —
+// dotenv never overrides an already-set value. Resolves to the repo root from
+// both `src/` (tsx dev) and `dist/` (built) since both are two levels deep.
+loadDotenv({
+  path: resolve(dirname(fileURLToPath(import.meta.url)), "../../..", ".env"),
+});
 
 /**
  * Typed config for the worker. This is the ONLY place `process.env` is read in
@@ -8,11 +19,17 @@ import { z } from "zod";
 const envSchema = z.object({
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
   MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/veda-ai"),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  /** Model used for paper generation (see CLAUDE.md "Tech + versions"). */
-  ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-4-6"),
+  /** AWS region hosting the Bedrock model / inference profile. */
+  AWS_REGION: z.string().min(1).default("us-east-1"),
+  /** Bedrock API key (bearer token); consumed by the AWS SDK, never logged. */
+  AWS_BEARER_TOKEN_BEDROCK: z.string().optional(),
+  /** Bedrock model id / cross-region inference profile (CLAUDE.md "Tech + versions"). */
+  BEDROCK_MODEL_ID: z
+    .string()
+    .min(1)
+    .default("us.anthropic.claude-sonnet-4-5-20250929-v1:0"),
   /** Max output tokens for a generation call. */
-  ANTHROPIC_MAX_TOKENS: z.coerce.number().int().positive().default(8192),
+  BEDROCK_MAX_TOKENS: z.coerce.number().int().positive().default(8192),
   /** BullMQ worker concurrency (CLAUDE.md: 5). */
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
   /** TTL (seconds) for the `paper:<hash>` generation cache (CLAUDE.md: 24h). */

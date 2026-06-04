@@ -28,13 +28,19 @@ const defaultJobOptions: JobsOptions = {
 
 /**
  * Create the assessment queue using a BullMQ-configured ioredis connection
- * (`maxRetriesPerRequest: null`, enforced by `createBullRedis`).
+ * (`maxRetriesPerRequest: null`, enforced by `createBullRedis`). An optional
+ * `prefix` overrides BullMQ's default key namespace — used by the e2e test to
+ * isolate its queue from any other worker on the same Redis.
  */
-export function createAssessmentQueue(redisUrl: string): AssessmentQueue {
+export function createAssessmentQueue(
+  redisUrl: string,
+  prefix?: string,
+): AssessmentQueue {
   const connection = createBullRedis(redisUrl);
   return new Queue<GeneratePaperJobData>(QUEUE_NAME, {
     connection,
     defaultJobOptions,
+    ...(prefix ? { prefix } : {}),
   });
 }
 

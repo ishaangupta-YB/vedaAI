@@ -3,7 +3,7 @@ import { Queue, Worker, type Job } from "bullmq";
 import { JOB_NAMES, QUEUE_NAME } from "@veda-ai/shared";
 import { connectMongo, createBullRedis, createRedis } from "@veda-ai/db";
 import { config } from "./config.js";
-import { createAnthropicClient, createGenerateFn } from "./anthropic.js";
+import { createBedrockClient, createGenerateFn } from "./bedrock.js";
 import { createPublisher } from "./publisher.js";
 import {
   handleGeneratePaper,
@@ -21,6 +21,21 @@ export interface StartedWorker {
   close: () => Promise<void>;
 }
 
+/** Options for {@link startWorker}. */
+export interface StartWorkerOptions {
+  /**
+   * Inject a model caller. Used by the e2e test to drive the full pipeline
+   * with a deterministic stub (no AWS / no network). When omitted, a
+   * Bedrock-backed generator is built from config if credentials are present.
+   */
+  generate?: GenerateFn;
+  /**
+   * BullMQ key prefix override. Used by the e2e test to isolate its queue from
+   * any other worker on the same Redis. Must match the producing queue's prefix.
+   */
+  prefix?: string;
+}
+
 /**
  * Boot the BullMQ worker for the `assessment` queue: connect Mongo, wire the
  * Redis connections (a dedicated blocking connection each for the Worker and
@@ -30,7 +45,9 @@ export interface StartedWorker {
  * Exported so the API can optionally run the worker in-process in a co-located
  * deployment; when this module is the entrypoint it boots itself (see bottom).
  */
-export async function startWorker(): Promise<StartedWorker> {
+export async function startWorker(
+  options: StartWorkerOptions = {},
+): Promise<StartedWorker> {
   await connectMongo(config.MONGODB_URI);
 
   // BullMQ requires dedicated connections (it uses long-lived blocking commands).
@@ -43,6 +60,7 @@ export async function startWorker(): Promise<StartedWorker> {
 
   const queue = new Queue(QUEUE_NAME, {
     connection: queueConnection,
+    ...(options.prefix ? { prefix: options.prefix } : {}),
     defaultJobOptions: {
       attempts: 3,
       backoff: { type: "exponential", delay: 1000 },
@@ -51,17 +69,19 @@ export async function startWorker(): Promise<StartedWorker> {
     },
   });
 
-  let generate: GenerateFn | null = null;
-  if (config.ANTHROPIC_API_KEY) {
-    const client = createAnthropicClient(config.ANTHROPIC_API_KEY);
-    generate = createGenerateFn(client, {
-      model: config.ANTHROPIC_MODEL,
-      maxTokens: config.ANTHROPIC_MAX_TOKENS,
-    });
-  } else {
-    console.warn(
-      "[worker] ANTHROPIC_API_KEY not set — generate-paper jobs will fail until it is provided",
-    );
+  let generate: GenerateFn | null = options.generate ?? null;
+  if (!generate) {
+    if (config.AWS_BEARER_TOKEN_BEDROCK) {
+      const client = createBedrockClient(config.AWS_REGION);
+      generate = createGenerateFn(client, {
+        modelId: config.BEDROCK_MODEL_ID,
+        maxTokens: config.BEDROCK_MAX_TOKENS,
+      });
+    } else {
+      console.warn(
+        "[worker] AWS_BEARER_TOKEN_BEDROCK not set — generate-paper jobs will fail until Bedrock credentials are provided",
+      );
+    }
   }
 
   const ctx: JobContext = {
@@ -86,7 +106,11 @@ export async function startWorker(): Promise<StartedWorker> {
           throw new Error(`Unknown job: ${job.name}`);
       }
     },
-    { connection: workerConnection, concurrency: config.WORKER_CONCURRENCY },
+    {
+      connection: workerConnection,
+      concurrency: config.WORKER_CONCURRENCY,
+      ...(options.prefix ? { prefix: options.prefix } : {}),
+    },
   );
 
   worker.on("ready", () => {

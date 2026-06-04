@@ -176,10 +176,11 @@ subscriber connection cannot run normal commands).
 2. Compute a cache key = stable hash of normalized `CreateAssignmentInput` (sorted keys). If
    `paper:<key>` exists in Redis, reuse it (clone with new ids/assignmentId), skip the LLM call.
 3. Build a deterministic prompt from the input (see "Prompt construction" below).
-4. Call Anthropic with **structured outputs** (`output_config` → `json_schema` of `QuestionPaper`
-   minus server-assigned fields). Re-validate the returned JSON with the Zod `QuestionPaper`
-   schema. On Zod failure: one repair attempt (feed the model its output + the Zod issues, ask it
-   to fix). On second failure: throw → job fails → `generation:failed`.
+4. Call Bedrock (Converse API) with **structured outputs** (`outputConfig.textFormat` →
+   `json_schema` of `QuestionPaper` minus server-assigned fields; the JSON Schema is passed as a
+   string). Re-validate the returned JSON with the Zod `QuestionPaper` schema. On Zod failure: one
+   repair attempt (feed the model its output + the Zod issues, ask it to fix). On second failure:
+   throw → job fails → `generation:failed`.
 5. Assign ids, compute `totalMarks` from questions (don't trust the model's total), store
    `QuestionPaper` in Mongo, cache under `paper:<key>` (TTL 24h), set assignment status
    `completed` + `paperId`, publish `generation:completed`.
@@ -203,10 +204,13 @@ structured-output layer, not prose.
 - Node 20+, TypeScript 5, ESM throughout.
 - Frontend: Next.js 16 (App Router), React 19.2, Zustand, react-hook-form + zod resolver,
   socket.io-client, Tailwind. `@react-pdf/renderer` optional client fallback.
-- Backend: Express 5, Socket.IO 4, BullMQ + ioredis, Mongoose 8, Zod, `@anthropic-ai/sdk`.
-  Default model `claude-sonnet-4-6`; structured outputs via `output_config`. PDF via
-  `@react-pdf/renderer` (`renderToBuffer`, no headless browser — friendly to small hosts).
-  PDF upload-text extraction via `unpdf` (or `pdf-parse`).
+- Backend: Express 5, Socket.IO 4, BullMQ + ioredis, Mongoose 8, Zod. LLM via **AWS Bedrock**
+  using `@aws-sdk/client-bedrock-runtime` (Converse API). Default model
+  `us.anthropic.claude-sonnet-4-5-20250929-v1:0` (cross-region inference profile); structured
+  outputs via Converse `outputConfig.textFormat` (json_schema). Auth is a Bedrock API key
+  (`AWS_BEARER_TOKEN_BEDROCK`), auto-detected by the AWS SDK. PDF via `@react-pdf/renderer`
+  (`renderToBuffer`, no headless browser — friendly to small hosts). PDF upload-text extraction
+  via `unpdf` (or `pdf-parse`).
 - Infra: MongoDB Atlas (M0), Redis (Upstash or Railway/Render Key Value).
 
 ## Conventions
@@ -218,8 +222,10 @@ structured-output layer, not prose.
 
 ## Env vars (document in README, never commit)
 
-`MONGODB_URI`, `REDIS_URL`, `ANTHROPIC_API_KEY`, `PORT`, `CLIENT_ORIGIN` (CORS),
-`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`.
+`MONGODB_URI`, `REDIS_URL`, `PORT`, `CLIENT_ORIGIN` (CORS), `NEXT_PUBLIC_API_URL`,
+`NEXT_PUBLIC_WS_URL`. Worker (AWS Bedrock): `AWS_BEARER_TOKEN_BEDROCK` (Bedrock API key — never
+committed), `AWS_REGION`, `BEDROCK_MODEL_ID`, `BEDROCK_MAX_TOKENS`. For local dev, `apps/api` and
+`apps/worker` load the monorepo-root `.env` via dotenv; `apps/web` reads `apps/web/.env.local`.
 
 ---
 
@@ -231,3 +237,14 @@ structured-output layer, not prose.
   exam-paper PDF bytes there so the API can stream them from
   `GET /api/papers/:id/pdf`. It is server-side storage only and is NOT part of
   the JSON `QuestionPaper` Zod contract (binary blob, served via a dedicated route).
+- (e2e/bedrock) LLM provider switched from `@anthropic-ai/sdk` to **AWS Bedrock**
+  via `@aws-sdk/client-bedrock-runtime` (Converse API). Structured outputs use the
+  Converse `outputConfig.textFormat` (json_schema as a string) on the `bedrock-runtime`
+  endpoint — Bedrock's Anthropic Messages `output_config` path returns 400. Worker env
+  is now `AWS_BEARER_TOKEN_BEDROCK` / `AWS_REGION` / `BEDROCK_MODEL_ID` /
+  `BEDROCK_MAX_TOKENS` (replacing `ANTHROPIC_*`); `apps/api` + `apps/worker` load the
+  root `.env` via dotenv. **No `packages/shared` shape changed** — enums, schemas,
+  WS events, REST routes, and the queue contract are identical end to end (verified in
+  web + api + worker). Added a CI-safe e2e happy-path test (`apps/api/src/e2e.test.ts`)
+  that drives REST → queue → in-process worker (stubbed LLM) → Mongo and asserts a valid
+  stored `QuestionPaper`; it auto-skips when Mongo/Redis are unreachable.

@@ -56,7 +56,14 @@ export function TextInput({
   invalid?: boolean;
   ref?: Ref<HTMLInputElement>;
 }): React.ReactNode {
-  return <input ref={ref} className={cn(CONTROL, "h-12", invalid && INVALID, className)} {...props} />;
+  return (
+    <input
+      ref={ref}
+      aria-invalid={invalid ? true : undefined}
+      className={cn(CONTROL, "h-12", invalid && INVALID, className)}
+      {...props}
+    />
+  );
 }
 
 export function Textarea({
@@ -71,6 +78,7 @@ export function Textarea({
   return (
     <textarea
       ref={ref}
+      aria-invalid={invalid ? true : undefined}
       className={cn(CONTROL, "min-h-[7rem] py-3 leading-relaxed", invalid && INVALID, className)}
       {...props}
     />
@@ -91,6 +99,7 @@ export function Select({
     <div className="relative">
       <select
         ref={ref}
+        aria-invalid={invalid ? true : undefined}
         className={cn(
           CONTROL,
           "h-12 cursor-pointer appearance-none pr-10 font-medium",
