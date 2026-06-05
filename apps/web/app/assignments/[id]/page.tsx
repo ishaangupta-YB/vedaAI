@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { useGeneration } from "@/src/hooks/useGeneration";
 import { useGenerationStore } from "@/src/store/generation";
-import { GenerationFailed, GenerationStatus } from "@/src/components/generation/GenerationStatus";
+import {
+  GenerationFailed,
+  GenerationStatus,
+} from "@/src/components/generation/GenerationStatus";
 import { QuestionPaperView } from "@/src/components/output/QuestionPaperView";
 import { ActionBar } from "@/src/components/output/ActionBar";
-import { PageHeader } from "@/src/components/ui/PageHeader";
 import { ApiError, regenerate } from "@/src/lib/api";
 
 export default function AssignmentPage(): React.ReactNode {
@@ -42,31 +45,26 @@ export default function AssignmentPage(): React.ReactNode {
   if (!id) return null;
 
   const failed = !paper && (status === "failed" || Boolean(error));
-  const title = paper ? "Question Paper" : failed ? "Generation Failed" : "Generating Paper";
-  const subtitle = paper
-    ? "Review, regenerate or export your generated paper."
-    : failed
-      ? "We couldn't generate this paper."
-      : "Your question paper is being created in the background.";
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div data-print="hide">
-        <PageHeader title={title} subtitle={subtitle} />
-      </div>
-
-      <div className="mt-5">
-        {paper ? (
-          <div className="space-y-5">
-            <ActionBar paper={paper} assignmentId={id} />
-            <QuestionPaperView paper={paper} />
-          </div>
-        ) : failed ? (
-          <GenerationFailed error={error} onRetry={handleRetry} retrying={retrying} />
-        ) : (
-          <GenerationStatus status={status} progress={progress} stage={stage} />
-        )}
-      </div>
+      {paper ? (
+        <div className="space-y-5">
+          <ActionBar paper={paper} />
+          <QuestionPaperView paper={paper} />
+        </div>
+      ) : failed ? (
+        <GenerationFailed error={error} onRetry={handleRetry} retrying={retrying} />
+      ) : status === null ? (
+        // Recovering the assignment's state on load — show a neutral loader
+        // instead of briefly flashing the "generating" UI. `<output>` carries an
+        // implicit `role="status"` live region for screen readers.
+        <output aria-label="Loading paper" className="flex min-h-[55vh] items-center justify-center">
+          <Loader2 className="size-7 animate-spin text-muted" />
+        </output>
+      ) : (
+        <GenerationStatus status={status} progress={progress} stage={stage} />
+      )}
     </div>
   );
 }

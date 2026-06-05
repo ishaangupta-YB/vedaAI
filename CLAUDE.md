@@ -125,9 +125,11 @@ middleware). One schema, validated on both ends — do not duplicate validation 
 | POST   | `/uploads`                    | multipart `file` (pdf/txt)   | `{ sourceText: string }`                 |
 | POST   | `/assignments`                | `CreateAssignmentInput`      | `201 { assignmentId, jobId }`            |
 | GET    | `/assignments/:id`            | —                            | `{ assignment, paper?: QuestionPaper }`  |
+| DELETE | `/assignments/:id`            | —                            | `204 No Content`                         |
 | GET    | `/papers/:id`                 | —                            | `QuestionPaper`                          |
 | POST   | `/assignments/:id/regenerate` | —                            | `202 { jobId }`                          |
 | GET    | `/papers/:id/pdf`             | —                            | `application/pdf` (download)             |
+| POST   | `/papers/:id/pdf`             | —                            | `202 { jobId }` (re-render the PDF)      |
 
 Validation failures return `400 { error: "ValidationError", issues: ZodIssue[] }`.
 Not found returns `404 { error: "NotFound" }`.
@@ -147,6 +149,7 @@ Not found returns `404 { error: "NotFound" }`.
 | `generation:completed`  | `{ assignmentId, paperId }`          |
 | `generation:failed`     | `{ assignmentId, error: string }`    |
 | `pdf:ready`             | `{ assignmentId, paperId, url }`     |
+| `pdf:failed`            | `{ assignmentId, paperId, error: string }` |
 
 - **Client → server**: `join` `{ assignmentId }`, `leave` `{ assignmentId }`.
 
@@ -248,3 +251,55 @@ committed), `AWS_REGION`, `BEDROCK_MODEL_ID`, `BEDROCK_MAX_TOKENS`. For local de
   web + api + worker). Added a CI-safe e2e happy-path test (`apps/api/src/e2e.test.ts`)
   that drives REST → queue → in-process worker (stubbed LLM) → Mongo and asserts a valid
   stored `QuestionPaper`; it auto-skips when Mongo/Redis are unreachable.
+- (api) Added `DELETE /assignments/:id` route to delete an assignment and its associated paper.
+- (web) Redesigned the Assignments experience to the Figma `desktop3`/`mobileview3`
+  screens: a single shared `AssignmentsView` (rendered by both `/` and `/assignments`)
+  with a Filter+Search toolbar, a 2-column card grid, a per-card actions menu
+  (View / Delete), a floating "Create Assignment" button, and a confirmation modal
+  for delete (replacing `confirm()`/`alert()` with `sonner` toasts). Deletes call the
+  existing `DELETE /assignments/:id` and emit a `window` `assignments:changed` event so
+  the sidebar count stays in sync. **Web/UI only — no `packages/shared` shape, REST
+  route, WS event, or queue contract changed.**
+- (web) Output + realtime/UX hardening (no contract change): paper actions now
+  expose only **Download PDF** (Print + Regenerate buttons removed; the failed-state
+  "Try again" retry, which still uses `POST /assignments/:id/regenerate`, stays) and
+  the answer key is always shown (Show/Hide toggle removed). Download is a client-side
+  blob fetch of `GET /papers/:id/pdf` (a cross-origin `<a download>` is ignored by
+  browsers, so the old link navigated the tab to the PDF — which also closed the
+  socket); it now saves reliably with a clean filename. The generation socket allows a
+  polling fallback, reconnects indefinitely, and re-joins + re-syncs assignment/PDF
+  state on every (re)connect, recovering missed `completed`/`pdf:ready` events (the
+  download no longer sticks on "Preparing PDF…" after a refresh). Also fixed the mobile
+  bottom-nav links (Assignments → `/assignments`; unbuilt items show a toast) and the
+  assignment-card 3-dot menu z-index stacking. The `GET /papers/:id/pdf` route is
+  unchanged.
+- (web) Output page aligned to the Figma `desktop2`/`mobileview2` screen and the PDF
+  download made bulletproof (no contract change): removed the redundant green-dot page
+  header (the dark download panel is the header). The Download button is now always
+  available (keyed off `paper.id`, not the `pdf:ready` event), fetches with a short
+  404 retry while the render job finishes, and revokes the object URL on a delay —
+  revoking it immediately after `click()` was cancelling the save in some browsers
+  (e.g. Safari), which was why downloads appeared to do nothing.
+- (api) Fixed `GET /papers/:id/pdf` serving a CORRUPT file (the "not a valid PDF" bug).
+  The route read the bytes with `.lean()`, which surfaces the `pdf` field as a BSON
+  `Binary` object; `res.send(<object>)` then JSON-serialized it to a base64 string
+  while leaving `Content-Type: application/pdf`, so the download was JSON text, not a
+  PDF. Now reads the HYDRATED document (a real Node `Buffer`), normalizes defensively,
+  sets `Content-Length`, and `res.end(bytes)`. The renderer + storage were already
+  correct (verified the stored bytes start with `%PDF`), so no Puppeteer/headless
+  browser is needed — the route output contract is unchanged.
+- (web) Fixed the assignment detail page flashing the "generating" UI for a split
+  second on refresh: while the run state is still being recovered from the server
+  (`status === null`), the page now renders a neutral loader instead of
+  `GenerationStatus`. Real generations still set `status` to `queued`/`active` (via
+  `beginRun`/the socket) so the live progress UI is unaffected.
+- (contract) Added the `pdf:failed` WS event (`{ assignmentId, paperId, error }`)
+  and `POST /papers/:id/pdf` (`202 { jobId }`) so a failed PDF render is no longer
+  silent. The worker now publishes `pdf:failed` when a `render-pdf` job exhausts its
+  retries (previously only `generate-paper` failures surfaced); the client shows a
+  real error + a **Try again** action that calls `POST /papers/:id/pdf` to
+  re-enqueue `render-pdf` (no LLM re-run). The web `ActionBar` now reflects PDF state
+  (Preparing / Download / Failed+retry) from `pdf:ready`/`pdf:failed`, and the download
+  404-retry window was widened. The `render-pdf` render still uses `@react-pdf/renderer`
+  (no headless browser). Also removed the "AI-generated question paper" subtitle from
+  both the web `QuestionPaperView` and the PDF `document.tsx` (kept in lock-step).

@@ -19,6 +19,11 @@ export interface GetAssignmentResult {
   paper?: QuestionPaper;
 }
 
+export interface ListAssignmentsResult {
+  assignments: Assignment[];
+  total: number;
+}
+
 /** Error thrown for non-2xx responses; carries server-provided Zod issues. */
 export class ApiError extends Error {
   readonly status: number;
@@ -65,6 +70,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body?.issues,
     );
   }
+  if (res.status === 204) {
+    return undefined as T;
+  }
   return (await res.json()) as T;
 }
 
@@ -90,6 +98,11 @@ export async function createAssignment(
   });
 }
 
+export async function listAssignments(): Promise<ListAssignmentsResult> {
+  if (USE_MOCK) return mock.listAssignments();
+  return request<ListAssignmentsResult>(API_ROUTES.ASSIGNMENTS);
+}
+
 export async function getAssignment(id: string): Promise<GetAssignmentResult> {
   if (USE_MOCK) return mock.getAssignment(id);
   const data = await request<GetAssignmentResult>(API_ROUTES.ASSIGNMENT(id));
@@ -111,7 +124,26 @@ export async function regenerate(id: string): Promise<{ jobId: string }> {
   });
 }
 
+export async function deleteAssignment(id: string): Promise<void> {
+  if (USE_MOCK) return mock.deleteAssignment(id);
+  await request<void>(API_ROUTES.ASSIGNMENT(id), {
+    method: "DELETE",
+  });
+}
+
 /** Absolute URL to the server-rendered PDF for a paper. */
 export function paperPdfUrl(paperId: string): string {
   return apiUrl(API_ROUTES.PAPER_PDF(paperId));
+}
+
+/**
+ * Ask the server to (re)render a paper's PDF. Used to recover from a
+ * `pdf:failed` event without re-running generation; the `pdf:ready` event fires
+ * once the new render is stored.
+ */
+export async function renderPdf(paperId: string): Promise<{ jobId?: string }> {
+  if (USE_MOCK) return { jobId: "mock" };
+  return request<{ jobId?: string }>(API_ROUTES.PAPER_PDF(paperId), {
+    method: "POST",
+  });
 }

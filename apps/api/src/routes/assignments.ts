@@ -34,6 +34,16 @@ export function createAssignmentsRouter(queue: AssessmentQueue): Router {
     },
   );
 
+  // GET /api/assignments — return { assignments: Assignment[], total: number }.
+  router.get(
+    API_ROUTES.ASSIGNMENTS,
+    async (_req: Request, res: Response): Promise<void> => {
+      const docs = await AssignmentModel.find().sort({ createdAt: -1 });
+      const assignments = docs.map(serializeAssignment);
+      res.json({ assignments, total: assignments.length });
+    },
+  );
+
   // GET /api/assignments/:id — return { assignment, paper? }.
   router.get(
     API_ROUTES.ASSIGNMENT(":id"),
@@ -78,6 +88,28 @@ export function createAssignmentsRouter(queue: AssessmentQueue): Router {
       await assignment.save();
 
       res.status(202).json({ jobId });
+    },
+  );
+
+  // DELETE /api/assignments/:id — delete the assignment and its associated paper.
+  router.delete(
+    API_ROUTES.ASSIGNMENT(":id"),
+    async (req: Request, res: Response): Promise<void> => {
+      const { id } = req.params;
+      if (!mongoose.isValidObjectId(id)) {
+        throw new NotFoundError();
+      }
+      const assignment = await AssignmentModel.findById(id);
+      if (!assignment) {
+        throw new NotFoundError();
+      }
+
+      if (assignment.paperId) {
+        await QuestionPaperModel.findByIdAndDelete(assignment.paperId);
+      }
+      await AssignmentModel.findByIdAndDelete(id);
+
+      res.status(204).end();
     },
   );
 

@@ -107,11 +107,19 @@ from inside `apps/*`: import from them, never redefine their types locally.
    **publishes** `{ event, payload }` JSON to the Redis `ws:events` channel; the
    API **subscribes** on a dedicated connection and re-emits each event to room
    `assignment:<id>`. The browser updates a Zustand store from those events
-   (`generation:active → progress → completed`, then `pdf:ready`).
+   (`generation:active → progress → completed`, then `pdf:ready`). The client
+   re-joins its room and re-syncs assignment/PDF state on every (re)connect and
+   refresh, so a dropped socket never loses progress or a missed
+   `completed`/`pdf:ready` event.
 6. **Render.** The output page renders the `QuestionPaper` from the store (never
-   raw model text). `render-pdf` produces exam-paper PDF bytes server-side with
-   `@react-pdf/renderer` (no headless browser) and stores them on the paper;
-   `GET /api/papers/:id/pdf` streams them for download.
+   raw model text) and shows the answer key inline. `render-pdf` produces
+   exam-paper PDF bytes server-side with `@react-pdf/renderer` (no headless
+   browser) and stores them on the paper; `GET /api/papers/:id/pdf` streams them
+   and the browser fetches those bytes as a blob to save the file client-side
+   (reliable across the API's separate origin). If a render fails after its
+   retries, the worker emits `pdf:failed` and the download button surfaces a real
+   error + a **Try again** that re-renders via `POST /api/papers/:id/pdf` (no LLM
+   re-run) instead of a download that silently 404s forever.
 
 ---
 
@@ -135,7 +143,7 @@ convention:
 ## Deliberate decisions
 
 - **Zustand for generation state.** A single store holds `status / progress /
-  stage / paper / pdfUrl / error`, fed by the socket subscription. It keeps the
+  stage / paper / pdfUrl / pdfError / error`, fed by the socket subscription. It keeps the
   realtime lifecycle out of component state and lets the create flow, progress
   view, and output page read one consistent source.
 - **Socket.IO rooms (`assignment:<id>`).** Each assignment gets its own room so

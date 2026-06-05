@@ -10,7 +10,11 @@ import {
   markGenerationFailed,
   type GeneratePaperData,
 } from "./jobs/generatePaper.js";
-import { handleRenderPdf, type RenderPdfData } from "./jobs/renderPdf.js";
+import {
+  handleRenderPdf,
+  markPdfFailed,
+  type RenderPdfData,
+} from "./jobs/renderPdf.js";
 import type { GenerateFn } from "./generate.js";
 import type { JobContext } from "./jobContext.js";
 
@@ -121,8 +125,10 @@ export async function startWorker(
     console.error("[worker] error:", err.message);
   });
 
-  // Surface a terminal generation failure to the client exactly once: when a
-  // generate-paper job has exhausted its retries.
+  // Surface a terminal failure to the client exactly once, after the job has
+  // exhausted its retries: generate-paper becomes generation:failed, render-pdf
+  // becomes pdf:failed (otherwise a failed render is silent and the download
+  // 404s forever).
   worker.on("failed", (job, err) => {
     if (!job) {
       return;
@@ -130,12 +136,15 @@ export async function startWorker(
     console.error(
       `[worker] job ${job.name} (${job.id ?? "no-id"}) failed: ${err.message}`,
     );
+    const attempts = job.opts.attempts ?? 1;
+    if (job.attemptsMade < attempts) {
+      return;
+    }
     if (job.name === JOB_NAMES.GENERATE_PAPER) {
-      const attempts = job.opts.attempts ?? 1;
-      if (job.attemptsMade >= attempts) {
-        const { assignmentId } = job.data as GeneratePaperData;
-        void markGenerationFailed(ctx, assignmentId, err);
-      }
+      const { assignmentId } = job.data as GeneratePaperData;
+      void markGenerationFailed(ctx, assignmentId, err);
+    } else if (job.name === JOB_NAMES.RENDER_PDF) {
+      void markPdfFailed(ctx, job.data as RenderPdfData, err);
     }
   });
 

@@ -7,6 +7,6 @@ export const metadata: Metadata = {
   description: "Manage and create assignments for your classes.",
 };
 
-export default function Home(): ReactNode {
+export default function AssignmentsPage(): ReactNode {
   return <AssignmentsView />;
 }

@@ -251,6 +251,11 @@ export function createAssignment(
   return Promise.resolve({ assignmentId, jobId });
 }
 
+export function listAssignments(): Promise<{ assignments: Assignment[]; total: number }> {
+  const assignments = Array.from(runs.values()).map((r) => r.assignment);
+  return Promise.resolve({ assignments, total: assignments.length });
+}
+
 export function getAssignment(
   id: string,
 ): Promise<{ assignment: Assignment; paper?: QuestionPaper }> {
@@ -277,6 +282,18 @@ export function regenerate(id: string): Promise<{ jobId: string }> {
   // Restart immediately if the page is already listening.
   if ((listeners.get(id)?.size ?? 0) > 0) startRun(id);
   return Promise.resolve({ jobId });
+}
+
+export function deleteAssignment(id: string): Promise<void> {
+  const run = runs.get(id);
+  if (!run) return Promise.reject(new Error("NotFound"));
+  if (run.paper) {
+    paperIndex.delete(run.paper.id);
+  }
+  run.timers.forEach(clearTimeout);
+  runs.delete(id);
+  listeners.delete(id);
+  return Promise.resolve();
 }
 
 /** Subscribe to a mock "room". Kicks off the run lazily once joined. */

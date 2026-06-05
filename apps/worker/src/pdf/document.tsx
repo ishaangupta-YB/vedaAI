@@ -43,12 +43,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: 0.2,
   },
-  subtitle: {
-    fontSize: 9.5,
-    color: MUTED,
-    textAlign: "center",
-    marginTop: 3,
-  },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -192,7 +186,6 @@ export function PaperDocument({ paper }: PaperDocumentProps): React.JSX.Element 
     <Document title={paper.title}>
       <Page size="A4" style={styles.page}>
         <Text style={styles.title}>{paper.title}</Text>
-        <Text style={styles.subtitle}>AI-generated question paper</Text>
 
         <View style={styles.metaRow}>
           <Text style={styles.metaText}>Total Questions: {totalQuestions}</Text>

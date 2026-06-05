@@ -1,29 +1,12 @@
+import Image from "next/image";
 import { cn } from "@/src/lib/cn";
+import AppLogo from "@/../../design/app-logo.svg";
 
-/** The VedaAI mark: a black squircle holding a two-tone "V" (orange + white). */
+/** The VedaAI mark: app-logo.svg */
 function LogoMark({ className }: { className?: string }): React.ReactNode {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center rounded-[28%] bg-ink shadow-[0_4px_12px_-4px_rgba(0,0,0,0.5)]",
-        className,
-      )}
-      aria-hidden
-    >
-      <svg viewBox="0 0 40 40" className="size-[58%]" fill="none">
-        <path
-          d="M9 11 L20 30"
-          stroke="var(--color-brand-500)"
-          strokeWidth="4.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M20 30 L31 11"
-          stroke="#ffffff"
-          strokeWidth="4.5"
-          strokeLinecap="round"
-        />
-      </svg>
+    <span className={cn("inline-flex items-center justify-center", className)} aria-hidden>
+      <Image src={AppLogo} className="size-full object-contain" alt="" priority />
     </span>
   );
 }
@@ -39,7 +22,7 @@ export function Logo({
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <LogoMark className={cn("size-10", markClassName)} />
-      <span className="text-[1.45rem] font-extrabold tracking-tight text-ink">
+      <span className="font-bricolage font-bold text-[28px] leading-[20px] tracking-[-0.06em] text-ink align-middle flex items-center">
         Veda<span>AI</span>
       </span>
     </span>

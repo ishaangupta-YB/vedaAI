@@ -47,3 +47,23 @@ export async function handleRenderPdf(
     url: API_ROUTES.PAPER_PDF(paperId),
   });
 }
+
+/**
+ * Announce `pdf:failed` so the client can surface a real error + retry instead
+ * of a download that 404s forever. Called by the worker once a `render-pdf`
+ * job's retries are exhausted (its sibling to {@link markGenerationFailed}).
+ * The paper itself stays valid — only its PDF render failed — so a retry just
+ * re-enqueues `render-pdf` (see `POST /api/papers/:id/pdf`).
+ */
+export async function markPdfFailed(
+  ctx: JobContext,
+  data: RenderPdfData,
+  error: unknown,
+): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  await ctx.publisher.publish(WS_EVENTS.PDF_FAILED, {
+    assignmentId: data.assignmentId,
+    paperId: data.paperId,
+    error: message,
+  });
+}

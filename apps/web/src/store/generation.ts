@@ -18,6 +18,8 @@ interface GenerationState {
   paper: QuestionPaper | null;
   /** Download URL, populated when the `pdf:ready` event arrives. */
   pdfUrl: string | null;
+  /** PDF render failure message, from a `pdf:failed` event. */
+  pdfError: string | null;
   /** Failure message from a `generation:failed` event. */
   error: string | null;
 
@@ -29,6 +31,7 @@ interface GenerationState {
   setProgress: (progress: number, stage?: string) => void;
   setPaper: (paper: QuestionPaper) => void;
   setPdfUrl: (url: string) => void;
+  setPdfError: (message: string | null) => void;
   setError: (message: string) => void;
   reset: () => void;
 }
@@ -41,6 +44,7 @@ const initial = {
   stage: null,
   paper: null,
   pdfUrl: null,
+  pdfError: null,
   error: null,
 };
 
@@ -56,6 +60,7 @@ export const useGenerationStore = create<GenerationState>((set) => ({
       stage: null,
       paper: null,
       pdfUrl: null,
+      pdfError: null,
       error: null,
     }),
 
@@ -72,7 +77,9 @@ export const useGenerationStore = create<GenerationState>((set) => ({
 
   setPaper: (paper) => set({ paper, status: "completed", progress: 100 }),
 
-  setPdfUrl: (pdfUrl) => set({ pdfUrl }),
+  setPdfUrl: (pdfUrl) => set({ pdfUrl, pdfError: null }),
+
+  setPdfError: (pdfError) => set({ pdfError }),
 
   setError: (error) => set({ error, status: "failed" }),
 

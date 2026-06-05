@@ -1,22 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import type { Question, QuestionPaper, Section } from "@veda-ai/shared";
 import { DifficultyBadge } from "@/src/components/output/DifficultyBadge";
 import { QUESTION_TYPE_LABELS } from "@/src/lib/labels";
-
-const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return DATE_FORMAT.format(d);
-}
 
 function optionLetter(i: number): string {
   return String.fromCharCode(65 + i);
@@ -33,9 +20,6 @@ function PaperHeader({ paper }: { paper: QuestionPaper }): React.ReactNode {
       <h1 className="text-center text-2xl font-bold tracking-tight text-ink sm:text-[1.7rem]">
         {paper.title}
       </h1>
-      <p className="mt-1 text-center text-sm text-muted">
-        AI-generated question paper{paper.generatedAt ? ` · ${formatDate(paper.generatedAt)}` : ""}
-      </p>
 
       <div className="mt-6 flex items-center justify-between border-t border-hairline pt-4 text-sm font-semibold text-ink">
         <span>Total Questions: {totalQuestions}</span>
@@ -126,8 +110,16 @@ function SectionBlock({ section }: { section: Section }): React.ReactNode {
 
 function AnswerKey({ sections }: { sections: Section[] }): React.ReactNode {
   return (
-    <div className="mt-4 rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/[0.05]">
-      <h3 className="font-bold text-ink">Answer Key</h3>
+    <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/[0.05]">
+      <div className="flex items-center gap-2.5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ink text-white">
+          <KeyRound className="size-4" />
+        </span>
+        <div>
+          <h3 className="font-bold leading-tight text-ink">Answer Key</h3>
+          <p className="text-xs text-muted">Reference answers for each question.</p>
+        </div>
+      </div>
       {sections.map((s) => (
         <div key={s.id} className="mt-3">
           <p className="text-sm font-semibold text-ink">{s.title}</p>
@@ -147,8 +139,6 @@ function AnswerKey({ sections }: { sections: Section[] }): React.ReactNode {
 
 /** Renders the exam paper purely from the validated QuestionPaper. */
 export function QuestionPaperView({ paper }: { paper: QuestionPaper }): React.ReactNode {
-  const [showAnswers, setShowAnswers] = useState(false);
-
   return (
     <article
       data-print="paper"
@@ -163,17 +153,8 @@ export function QuestionPaperView({ paper }: { paper: QuestionPaper }): React.Re
 
       <p className="mt-9 text-center text-sm font-bold text-ink">End of Question Paper</p>
 
-      <div className="mt-7">
-        <button
-          type="button"
-          data-print="hide"
-          onClick={() => setShowAnswers((v) => !v)}
-          className="inline-flex items-center gap-2 rounded-full bg-neutral-100 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-neutral-200"
-        >
-          {showAnswers ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-          {showAnswers ? "Hide answer key" : "Show answer key"}
-        </button>
-        {showAnswers ? <AnswerKey sections={paper.sections} /> : null}
+      <div className="mt-8 border-t border-hairline pt-7">
+        <AnswerKey sections={paper.sections} />
       </div>
     </article>
   );

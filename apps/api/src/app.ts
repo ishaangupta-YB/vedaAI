@@ -34,7 +34,7 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(createUploadsRouter());
   app.use(createAssignmentsRouter(deps.queue));
-  app.use(createPapersRouter());
+  app.use(createPapersRouter(deps.queue));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

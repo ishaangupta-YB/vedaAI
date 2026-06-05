@@ -21,6 +21,7 @@ export interface WsEventPayloads {
   [WS_EVENTS.GENERATION_COMPLETED]: { assignmentId: string; paperId: string };
   [WS_EVENTS.GENERATION_FAILED]: { assignmentId: string; error: string };
   [WS_EVENTS.PDF_READY]: { assignmentId: string; paperId: string; url: string };
+  [WS_EVENTS.PDF_FAILED]: { assignmentId: string; paperId: string; error: string };
 }
 
 export interface Publisher {

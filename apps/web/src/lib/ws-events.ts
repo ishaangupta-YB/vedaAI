@@ -31,6 +31,11 @@ export interface PdfReadyPayload {
   paperId: string;
   url: string;
 }
+export interface PdfFailedPayload {
+  assignmentId: string;
+  paperId: string;
+  error: string;
+}
 
 /** Discriminated envelope used by the mock channel + internal dispatch. */
 export type WsEnvelope =
@@ -39,4 +44,5 @@ export type WsEnvelope =
   | { event: typeof WS_EVENTS.GENERATION_PROGRESS; payload: GenerationProgressPayload }
   | { event: typeof WS_EVENTS.GENERATION_COMPLETED; payload: GenerationCompletedPayload }
   | { event: typeof WS_EVENTS.GENERATION_FAILED; payload: GenerationFailedPayload }
-  | { event: typeof WS_EVENTS.PDF_READY; payload: PdfReadyPayload };
+  | { event: typeof WS_EVENTS.PDF_READY; payload: PdfReadyPayload }
+  | { event: typeof WS_EVENTS.PDF_FAILED; payload: PdfFailedPayload };

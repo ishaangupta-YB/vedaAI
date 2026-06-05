@@ -12,6 +12,8 @@
     "clean": "rm -rf .next .turbo"
   },
   "dependencies": {
+    "@fontsource/bricolage-grotesque": "^5.2.10",
+    "@fontsource/inter": "^5.2.8",
     "@hookform/resolvers": "^5.4.0",
     "@veda-ai/shared": "workspace:*",
     "lucide-react": "^1.17.0",
@@ -20,6 +22,7 @@
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.77.0",
     "socket.io-client": "^4.8.3",
+    "sonner": "^2.0.7",
     "zod": "^3.23.8",
     "zustand": "^5.0.14"
   },

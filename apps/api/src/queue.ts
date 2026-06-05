@@ -12,7 +12,16 @@ export interface GeneratePaperJobData {
   assignmentId: string;
 }
 
-export type AssessmentQueue = Queue<GeneratePaperJobData>;
+/** Job data for the `render-pdf` job, re-enqueued by `POST /papers/:id/pdf`. */
+export interface RenderPdfJobData {
+  paperId: string;
+  assignmentId: string;
+}
+
+/** Either job the API can enqueue onto the assessment queue. */
+export type AssessmentJobData = GeneratePaperJobData | RenderPdfJobData;
+
+export type AssessmentQueue = Queue<AssessmentJobData>;
 
 /**
  * Default job options applied to every produced job (CLAUDE.md "Queue + job
@@ -37,7 +46,7 @@ export function createAssessmentQueue(
   prefix?: string,
 ): AssessmentQueue {
   const connection = createBullRedis(redisUrl);
-  return new Queue<GeneratePaperJobData>(QUEUE_NAME, {
+  return new Queue<AssessmentJobData>(QUEUE_NAME, {
     connection,
     defaultJobOptions,
     ...(prefix ? { prefix } : {}),
@@ -53,5 +62,19 @@ export async function enqueueGeneratePaper(
   assignmentId: string,
 ): Promise<string | undefined> {
   const job = await queue.add(JOB_NAMES.GENERATE_PAPER, { assignmentId });
+  return job.id;
+}
+
+/**
+ * Enqueue a `render-pdf` job to (re)render a paper's PDF. Used by
+ * `POST /papers/:id/pdf` so the client can recover from a `pdf:failed` event
+ * without re-running the (expensive) LLM generation.
+ */
+export async function enqueueRenderPdf(
+  queue: AssessmentQueue,
+  paperId: string,
+  assignmentId: string,
+): Promise<string | undefined> {
+  const job = await queue.add(JOB_NAMES.RENDER_PDF, { paperId, assignmentId });
   return job.id;
 }

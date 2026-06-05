@@ -14,6 +14,7 @@ export const WS_EVENTS = {
   GENERATION_COMPLETED: "generation:completed",
   GENERATION_FAILED: "generation:failed",
   PDF_READY: "pdf:ready",
+  PDF_FAILED: "pdf:failed",
 } as const;
 export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
 

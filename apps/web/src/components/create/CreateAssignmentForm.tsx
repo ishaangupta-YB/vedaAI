@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -46,13 +46,6 @@ export function CreateAssignmentForm(): React.ReactNode {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
 
-  // Move focus to the error summary when a server-side submit error appears, so
-  // keyboard and screen-reader users are taken straight to it (field-level
-  // validation errors are handled by react-hook-form's focus-on-error).
-  useEffect(() => {
-    if (submitError) errorRef.current?.focus();
-  }, [submitError]);
-
   const {
     register,
     control,
@@ -73,7 +66,7 @@ export function CreateAssignmentForm(): React.ReactNode {
   const totalMarks =
     configs?.reduce((sum, c) => sum + (Number(c.count) || 0) * (Number(c.marksPerQuestion) || 0), 0) ?? 0;
 
-  const onSubmit = handleSubmit(async (values) => {
+  const submitHandler = async (values: FormValues): Promise<void> => {
     setSubmitError(null);
     try {
       const payload: FormValues = {
@@ -88,11 +81,16 @@ export function CreateAssignmentForm(): React.ReactNode {
       setSubmitError(
         e instanceof ApiError ? e.message : "Something went wrong while creating the assignment.",
       );
+      setTimeout(() => {
+        errorRef.current?.focus();
+      }, 0);
     }
-  });
+  };
 
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-6">
+    // `handleSubmit` is invoked at submit time (not during render) so it never
+    // reads form refs while rendering.
+    <form onSubmit={(e) => void handleSubmit(submitHandler)(e)} noValidate className="space-y-6">
       <div className="rounded-panel bg-gradient-to-b from-white to-neutral-50/70 p-5 shadow-soft ring-1 ring-black/[0.04] sm:p-7 lg:p-8">
         <div className="mb-6">
           <h2 className="text-lg font-bold text-ink">Assignment Details</h2>
@@ -154,11 +152,13 @@ export function CreateAssignmentForm(): React.ReactNode {
           <legend className="sr-only">Question types</legend>
 
           {/* Column headers (desktop) */}
-          <div className="mb-2 hidden items-center gap-3 px-1 sm:flex">
+          <div className="mb-2 hidden gap-3 sm:flex sm:items-center">
             <span className="flex-1 text-sm font-semibold text-ink">Question Type</span>
-            <span className="w-28 text-center text-sm font-semibold text-ink">No. of Questions</span>
-            <span className="w-28 text-center text-sm font-semibold text-ink">Marks</span>
-            <span className="w-9" />
+            <div className="flex gap-3">
+              <span className="w-28 text-center text-sm font-semibold text-ink">No. of Questions</span>
+              <span className="w-28 text-center text-sm font-semibold text-ink">Marks</span>
+              <span className="w-9 shrink-0" />
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -320,7 +320,6 @@ export function CreateAssignmentForm(): React.ReactNode {
           Cancel
         </Button>
         <Button type="submit" size="lg" disabled={isSubmitting} className="w-full sm:w-auto">
-          <Sparkles className="size-[1.15rem]" />
           {isSubmitting ? "Generating…" : "Generate Question Paper"}
         </Button>
       </div>
