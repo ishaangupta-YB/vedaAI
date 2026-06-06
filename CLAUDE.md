@@ -124,6 +124,7 @@ middleware). One schema, validated on both ends — do not duplicate validation 
 | GET    | `/health`                     | —                            | `{ ok: true }`                           |
 | POST   | `/uploads`                    | multipart `file` (pdf/txt)   | `{ sourceText: string }`                 |
 | POST   | `/assignments`                | `CreateAssignmentInput`      | `201 { assignmentId, jobId }`            |
+| GET    | `/assignments`                | —                            | `{ assignments: Assignment[], total }`   |
 | GET    | `/assignments/:id`            | —                            | `{ assignment, paper?: QuestionPaper }`  |
 | DELETE | `/assignments/:id`            | —                            | `204 No Content`                         |
 | GET    | `/papers/:id`                 | —                            | `QuestionPaper`                          |
@@ -303,3 +304,8 @@ committed), `AWS_REGION`, `BEDROCK_MODEL_ID`, `BEDROCK_MAX_TOKENS`. For local de
   404-retry window was widened. The `render-pdf` render still uses `@react-pdf/renderer`
   (no headless browser). Also removed the "AI-generated question paper" subtitle from
   both the web `QuestionPaperView` and the PDF `document.tsx` (kept in lock-step).
+- (docs) Documented the existing `GET /api/assignments` list route (returns
+  `{ assignments: Assignment[], total: number }`) in the REST table above. It was
+  already implemented and used by the web app (`listAssignments`) but missing
+  from this contract — no shape or behavior change. The README now also carries
+  the full contract (data model, REST, WebSocket, queue) inline.

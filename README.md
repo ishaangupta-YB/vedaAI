@@ -12,9 +12,10 @@ response.** Model output is validated against a Zod schema, the validated object
 is stored, and every renderer (web and PDF) draws only from stored, validated
 data.
 
-> `CLAUDE.md` is the single source of truth for the shared contract (enums,
-> schemas, REST + WebSocket + queue shapes). This README explains how the pieces
-> fit together and why.
+> This README is self-contained: it covers the architecture, the end-to-end
+> flow, and the **complete contract** (enums, schemas, REST + WebSocket + queue
+> shapes) below. `CLAUDE.md` mirrors the same contract for coding agents and
+> keeps the contract change log.
 
 ---
 
@@ -83,6 +84,64 @@ packages/
 
 `packages/shared` and `packages/db` are the contract. Treat them as read-only
 from inside `apps/*`: import from them, never redefine their types locally.
+
+### Process & connection topology
+
+Three independently deployable runtimes talk only through MongoDB and Redis —
+never directly to each other:
+
+- **web** (browser) — the Next.js client; speaks REST + Socket.IO to the API only.
+- **api** (persistent host) — owns the REST surface, the Socket.IO server, the
+  BullMQ **producer**, and the pub/sub **bridge**. It never calls the LLM.
+- **worker** (persistent host) — the BullMQ **consumer**; the only process that
+  calls Bedrock and renders PDFs. It never owns a socket.
+
+Redis carries three independent concerns over separate ioredis connections:
+BullMQ needs dedicated blocking connections (`createBullRedis` forces
+`maxRetriesPerRequest: null`), the Socket.IO bridge needs a dedicated subscriber
+connection (a subscriber can't run normal commands), and the cache + publisher
+use ordinary clients. MongoDB connections are reused process-wide via
+`connectMongo`.
+
+---
+
+## Project structure
+
+```
+apps/
+  web/                          # Next.js 16 App Router client (Vercel-friendly)
+    app/                        # routes: / and /assignments (list), /create, /assignments/[id] (output)
+    src/components/             # assignments/, create/, generation/, output/, shell/, ui/, ...
+    src/hooks/useGeneration.ts  # opens the socket, mirrors every WS event into the store, re-syncs on (re)connect
+    src/store/generation.ts     # Zustand store: status/progress/stage/paper/pdfUrl/pdfError/error
+    src/lib/api.ts              # typed REST client (re-validates payloads with the shared Zod schemas)
+    src/lib/mock.ts             # in-memory REST + realtime mock (NEXT_PUBLIC_USE_MOCK=true)
+    src/config.ts               # typed NEXT_PUBLIC_* config (the only place process.env is read)
+  api/
+    src/app.ts                 # Express app: CORS, JSON, request-id, routes, error handler
+    src/index.ts               # boots HTTP + Socket.IO + the Redis pub/sub bridge
+    src/socket.ts              # Socket.IO rooms + handleBridgeMessage (ws:events -> room)
+    src/queue.ts               # BullMQ producer (enqueueGeneratePaper / enqueueRenderPdf)
+    src/routes/                # assignments.ts, papers.ts, uploads.ts
+    src/middleware/            # validate.ts (Zod), errorHandler.ts (wire error shapes), requestId.ts
+    src/lib/serialize.ts       # Mongoose doc -> shared wire shape (_id -> id, Dates -> ISO, drops pdf)
+    src/config.ts              # typed env config (loads the root .env)
+  worker/
+    src/index.ts               # BullMQ Worker: routes the two jobs, surfaces terminal failures
+    src/jobs/generatePaper.ts  # the 6-step generation flow (load -> cache -> prompt -> model -> validate -> store)
+    src/jobs/renderPdf.ts      # renders the stored paper to PDF bytes; emits pdf:ready / pdf:failed
+    src/generate.ts            # model-agnostic generate + exactly ONE validate/repair round-trip
+    src/bedrock.ts             # Bedrock Converse API with structured outputs (json_schema)
+    src/prompt.ts              # deterministic system + user prompt builder
+    src/paper.ts               # assign ids, recompute totalMarks, shape conversions
+    src/paperSchema.ts         # the model-output content schema + its JSON Schema
+    src/pdf/                   # render.ts (renderToBuffer) + document.tsx (@react-pdf/renderer)
+    src/publisher.ts           # publishes { event, payload } JSON to the ws:events channel
+    src/config.ts              # typed env config (loads the root .env)
+packages/
+  shared/src/                  # enums.ts, schemas.ts (Zod), constants.ts (routes/events/queue/colors), hash.ts
+  db/src/                      # mongo.ts, redis.ts, models/assignment.ts, models/questionPaper.ts
+```
 
 ---
 
@@ -177,6 +236,133 @@ convention:
 
 ---
 
+## Data model
+
+Zod (in `packages/shared`) is the single source of truth; every TypeScript type
+is `z.infer` of a schema. The **same `CreateAssignmentInput` schema validates the
+form client-side (react-hook-form + zod resolver) and the request server-side
+(Express middleware)** — one schema, both ends.
+
+Enums (exact wire values):
+
+- `QuestionType`: `mcq | short_answer | long_answer | true_false | fill_blank`
+- `Difficulty`: `easy | moderate | hard` (title-cased only for display)
+- `JobStatus`: `queued | active | completed | failed`
+
+```ts
+CreateAssignmentInput {
+  title: string                  // 1..200
+  dueDate: string                // ISO datetime, MUST be in the future
+  questionConfigs: Array<{       // 1..20 entries
+    type: QuestionType
+    count: number                // int >= 1
+    marksPerQuestion: number     // > 0
+  }>
+  additionalInstructions?: string  // <= 2000
+  sourceText?: string              // <= 50_000 (extracted from an uploaded PDF/txt)
+}
+
+Question      { id; text; type: QuestionType; difficulty: Difficulty; marks: number /* >0 */; options?: string[]; answer?: string }
+Section       { id; title; instruction; questions: Question[] }
+QuestionPaper { id; assignmentId; title; totalMarks: number; sections: Section[]; generatedAt: string /* ISO */ }
+Assignment    { id; ...CreateAssignmentInput; status: JobStatus; jobId?; paperId?; createdAt; updatedAt }
+```
+
+Server-assigned fields (`id`s, `totalMarks`, `generatedAt`) are computed by us,
+never taken from the model. The rendered PDF is stored as a `Buffer` on the
+paper document (`packages/db`) and served from a dedicated route — it is **not**
+part of the JSON `QuestionPaper` contract.
+
+---
+
+## REST API contract
+
+Base path `/api`. Bodies and responses use the shapes above.
+
+| Method | Path | Body / Params | Returns |
+|--------|------|---------------|---------|
+| GET | `/health` | — | `{ ok: true }` |
+| POST | `/uploads` | multipart `file` (pdf/txt, <=10MB) | `{ sourceText: string }` |
+| POST | `/assignments` | `CreateAssignmentInput` | `201 { assignmentId, jobId }` |
+| GET | `/assignments` | — | `{ assignments: Assignment[], total: number }` |
+| GET | `/assignments/:id` | — | `{ assignment: Assignment, paper?: QuestionPaper }` |
+| DELETE | `/assignments/:id` | — | `204 No Content` (also deletes its paper) |
+| POST | `/assignments/:id/regenerate` | — | `202 { jobId }` |
+| GET | `/papers/:id` | — | `QuestionPaper` |
+| GET | `/papers/:id/pdf` | — | `application/pdf` (streams stored bytes; `404` until rendered) |
+| POST | `/papers/:id/pdf` | — | `202 { jobId }` (re-render the PDF; no LLM re-run) |
+
+Error shapes (from the central error handler — never hand-rolled in routes):
+
+- `400 { error: "ValidationError", issues: ZodIssue[] }` — body failed the Zod schema.
+- `400 { error: "BadRequest", message: string }` — e.g. unsupported upload type or malformed JSON.
+- `404 { error: "NotFound" }` — unknown id / unmatched route.
+- `500 { error: "InternalServerError" }` — unexpected; internals never leak.
+
+---
+
+## WebSocket contract (Socket.IO)
+
+A client joins room `assignment:<assignmentId>` right after `POST /assignments`
+returns, and re-joins on every reconnect. All server -> client events carry
+`{ assignmentId }` plus the listed fields:
+
+| Event | Payload |
+|-------|---------|
+| `generation:queued` | `{ assignmentId, jobId }` |
+| `generation:active` | `{ assignmentId }` |
+| `generation:progress` | `{ assignmentId, progress: 0..100, stage: string }` |
+| `generation:completed` | `{ assignmentId, paperId }` |
+| `generation:failed` | `{ assignmentId, error: string }` |
+| `pdf:ready` | `{ assignmentId, paperId, url }` |
+| `pdf:failed` | `{ assignmentId, paperId, error: string }` |
+
+Client -> server: `join` / `leave` with `{ assignmentId }`.
+
+Two honest notes about the live implementation:
+
+- `generation:queued` is part of the contract surface, but the worker begins
+  processing at `generation:active`; the **queued** state is reflected by the
+  assignment's persisted `status` (the client also shows it optimistically right
+  after create), so no separate emit is required.
+- **The worker doesn't own the sockets.** It *publishes* `{ event, payload }`
+  JSON to the Redis `ws:events` channel; the API subscribes on a dedicated
+  connection and re-emits each message to room `assignment:<id>`. That bridge
+  lives in exactly one place, keeping the worker process-isolated and
+  horizontally scalable.
+
+---
+
+## Queue + job contract (BullMQ on Redis)
+
+- **Queue**: `assessment`.
+- **Jobs**: `generate-paper` (`{ assignmentId }`) and `render-pdf` (`{ paperId, assignmentId }`).
+- **Options**: worker concurrency `5`; `3` attempts with exponential backoff (1s
+  base); trim completed jobs to the last `100`; keep failed jobs for inspection.
+  The BullMQ connection sets `maxRetriesPerRequest: null`.
+
+The `generate-paper` flow (`apps/worker/src/jobs/generatePaper.ts`):
+
+1. Load the assignment, set `status: active`, publish `generation:active`.
+2. Compute the cache key `paper:<sha256>` from the canonical (sorted-key)
+   `CreateAssignmentInput`. On a **hit**, reuse the cached content (with fresh
+   ids) and **skip the LLM entirely**.
+3. On a **miss**: build the deterministic prompt (`progress 10`), call Bedrock
+   with structured outputs (`progress 40`), then re-validate against the Zod
+   `QuestionPaper` schema (`progress 80`) — exactly **one** repair round-trip,
+   then the job fails.
+4. Assign ids, **recompute `totalMarks`**, persist the paper, link `paperId`,
+   set `status: completed`, cache under `paper:<hash>` (TTL 24h).
+5. Publish `generation:progress 100` + `generation:completed`, then enqueue
+   `render-pdf`.
+6. If a job exhausts its retries the worker surfaces it exactly once:
+   `generate-paper` -> `generation:failed`, `render-pdf` -> `pdf:failed`.
+
+Every generation logs exactly one cache line (`HIT`/`MISS`) so the behavior is
+observable from the worker logs.
+
+---
+
 ## Prerequisites
 
 - Node 20+
@@ -223,6 +409,8 @@ A single root `.env` configures `api` + `worker`; `web` reads `NEXT_PUBLIC_*`.
 | `BEDROCK_MODEL_ID` | worker | – | Bedrock model id / cross-region inference profile |
 | `BEDROCK_MAX_TOKENS` | worker | – | Max output tokens per generation call |
 | `AWS_BEARER_TOKEN_BEDROCK` | worker | ✓\* | Bedrock API key. Without it, `generate-paper` jobs fail (the rest of the app still runs) |
+| `WORKER_CONCURRENCY` | worker | – | Max concurrent BullMQ jobs (default `5`) |
+| `PAPER_CACHE_TTL_SECONDS` | worker | – | TTL for the `paper:<hash>` generation cache (default `86400` = 24h) |
 | `PORT` | api | – | Express listen port (default `4000`) |
 | `CLIENT_ORIGIN` | api | – | CORS allowed origin (default `http://localhost:3000`) |
 | `NEXT_PUBLIC_API_URL` | web | – | REST base URL (browser) |
@@ -231,4 +419,8 @@ A single root `.env` configures `api` + `worker`; `web` reads `NEXT_PUBLIC_*`.
 
 \* Required only for real generation against Bedrock.
 
-See `CLAUDE.md` for the full contract (schemas, REST + WebSocket + queue contracts).
+`WORKER_CONCURRENCY` and `PAPER_CACHE_TTL_SECONDS` are optional advanced knobs
+read with the defaults shown; they are intentionally omitted from `.env.example`.
+
+This README is self-contained. `CLAUDE.md` mirrors the same contract for coding
+agents and additionally maintains the **contract change log**.
